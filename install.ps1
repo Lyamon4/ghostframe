@@ -21,5 +21,5 @@ if ($userPath -notlike "*$dir*") {
     Write-Host "Added $dir to your PATH (open a new terminal to use 'ghostframe')."
 }
 Write-Host ""
-Write-Host "Ready. Start a Vulkan game with:  ghostframe run <game.exe>"
-Write-Host "Click the ghostframe icon in the notification area to see it and switch it per game."
+Write-Host "Ready. Just start a Vulkan game, then click the ghostframe icon in the notification area"
+Write-Host "and tick Frame generation for it."
