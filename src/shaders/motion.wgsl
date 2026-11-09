@@ -45,77 +45,131 @@ fn lum(t: texture_2d<f32>, p: vec2f) -> f32 {
 }
 //LUM_END
 
-// Mean absolute luma difference over a 10x10 window around the block
-// (1 px of context on each side makes matching robust on flat blocks).
-// On the large levels every other pixel is skipped in a checkerboard:
-// the vector there is only being refined, so half the samples are plenty.
-fn sad(center: vec2f, v: vec2f) -> f32 {
-    var s = 0.0;
-    var n = 0.0;
-    let h = 0.5 * v;
-    for (var y = -5; y < 5; y++) {
-        for (var x = -5; x < 5; x++) {
-            if (P.sparse == 1u && ((x + y) & 1) != 0) { continue; }
-            let q = center + vec2f(f32(x) + 0.5, f32(y) + 0.5);
-            s += abs(lum(la, q - h) - lum(lb, q + h));
-            n += 1.0;
-        }
+// One workgroup of 64 threads per block, as 8 groups of 8: each round checks
+// up to 8 candidate vectors at once, each group of 8 threads splitting that
+// candidate's matching window. A refinement step (8 neighbours) is one round
+// instead of 8 sequential ones. All threads see the same sums
+// (workgroupUniformLoad) and make the same choices, so control flow stays
+// uniform.
+
+var<workgroup> wg_part: array<f32, 64>;
+var<workgroup> wg_sums: array<f32, 8>;
+
+var<private> lid: u32;
+var<private> best_v: vec2f;
+var<private> best_c: f32;
+var<private> center: vec2f;
+var<private> anchor: vec2f;
+
+// Pixel k of the matching window: 10x10 around the block (1 px of context
+// on each side makes matching robust on flat blocks), or a checkerboard half
+// of it on the large levels, where the vector is only being refined.
+fn window_px(k: u32) -> vec2f {
+    let i = i32(k);
+    if (P.sparse == 1u) {
+        let yr = i / 5;
+        let xr = 2 * (i % 5) + (yr & 1);
+        return vec2f(f32(xr - 5) + 0.5, f32(yr - 5) + 0.5);
     }
-    return s / n;
+    return vec2f(f32(i % 10 - 5) + 0.5, f32(i / 10 - 5) + 0.5);
 }
 
 fn fetch(t: texture_2d<f32>, g: vec2i, size: vec2i) -> vec2f {
     return textureLoad(t, clamp(g, vec2i(0), size - 1), 0).rg;
 }
 
-var<private> best_v: vec2f;
-var<private> best_c: f32;
-var<private> center: vec2f;
-var<private> anchor: vec2f;
-
-fn total_cost(v: vec2f) -> f32 {
-    // Smoothness: stay close to what the neighbourhood / coarser level says.
-    // Tiny zero bias: static content should not wander.
-    var c = sad(center, v) + P.lambda * length(v - anchor);
-    if (all(v == vec2f(0.0))) { c *= 0.97; }
-    return c;
-}
-
-fn try_vec(v: vec2f) {
-    // Neighbouring blocks usually share a vector: don't pay for it twice.
-    if (best_c < 1e8 && all(abs(v - best_v) < vec2f(1e-3))) { return; }
-    let c = total_cost(v);
-    if (c < best_c) {
-        best_c = c;
-        best_v = v;
+// Mean absolute luma difference of candidates c[0..m] (m <= 8), then keep
+// the best by total cost.
+fn eval_batch(c: array<vec2f, 8>, m: i32) {
+    let slot = lid / 8u;
+    let lane = lid % 8u;
+    let npix = select(100u, 50u, P.sparse == 1u);
+    var s = 0.0;
+    if (i32(slot) < m) {
+        let h = 0.5 * c[slot];
+        for (var k = lane; k < npix; k += 8u) {
+            let q = center + window_px(k);
+            s += abs(lum(la, q - h) - lum(lb, q + h));
+        }
     }
-}
-
-fn refine(step: f32) {
-    let base = best_v;
-    for (var y = -1; y <= 1; y++) {
-        for (var x = -1; x <= 1; x++) {
-            if (x != 0 || y != 0) {
-                try_vec(base + vec2f(f32(x), f32(y)) * step);
-            }
+    wg_part[lid] = s;
+    workgroupBarrier();
+    if (lane == 0u) {
+        var t = 0.0;
+        for (var j = 0u; j < 8u; j++) { t += wg_part[lid + j]; }
+        wg_sums[slot] = t;
+    }
+    let sums = workgroupUniformLoad(&wg_sums);
+    let inv_n = 1.0 / f32(npix);
+    for (var i = 0; i < m; i++) {
+        let v = c[i];
+        // Smoothness: stay close to what the neighbourhood / coarser level
+        // says. Tiny zero bias: static content should not wander.
+        var cost = sums[i] * inv_n + P.lambda * length(v - anchor);
+        if (all(v == vec2f(0.0))) { cost *= 0.97; }
+        if (cost < best_c) {
+            best_c = cost;
+            best_v = v;
         }
     }
 }
 
-@compute @workgroup_size(8, 8)
-fn search(@builtin(global_invocation_id) id: vec3u) {
-    let g = vec2i(id.xy);
-    if (g.x >= P.grid.x || g.y >= P.grid.y) { return; }
+fn refine(step: f32) {
+    let b = best_v;
+    var c: array<vec2f, 8>;
+    c[0] = b + vec2f(-step, -step);
+    c[1] = b + vec2f(0.0, -step);
+    c[2] = b + vec2f(step, -step);
+    c[3] = b + vec2f(-step, 0.0);
+    c[4] = b + vec2f(step, 0.0);
+    c[5] = b + vec2f(-step, step);
+    c[6] = b + vec2f(0.0, step);
+    c[7] = b + vec2f(step, step);
+    eval_batch(c, 8);
+}
+
+// Seed vectors, each distinct one once (neighbouring blocks usually share a
+// vector), in at most two rounds.
+fn try_seeds(seeds: array<vec2f, 10>, n: i32) {
+    var list: array<vec2f, 10>;
+    var k = 0;
+    for (var i = 0; i < n; i++) {
+        var dup = false;
+        for (var j = 0; j < k; j++) {
+            if (all(abs(list[j] - seeds[i]) < vec2f(1e-3))) { dup = true; }
+        }
+        if (!dup) { list[k] = seeds[i]; k++; }
+    }
+    var a: array<vec2f, 8>;
+    var b: array<vec2f, 8>;
+    for (var i = 0; i < 8; i++) { a[i] = list[i]; }
+    b[0] = list[8];
+    b[1] = list[9];
+    eval_batch(a, min(k, 8));
+    if (n > 8) { eval_batch(b, k - 8); }
+}
+
+@compute @workgroup_size(64)
+fn search(@builtin(workgroup_id) wid: vec3u, @builtin(local_invocation_index) li: u32) {
+    let g = vec2i(wid.xy);
+    lid = li;
     center = vec2f(g * BS) + HALF;
     best_c = 1e9;
     best_v = vec2f(0.0);
+    var seeds: array<vec2f, 10>;
 
     if (P.mode == 0u) {
+        // Exhaustive search in a +-range window, 8 vectors per round.
         anchor = vec2f(0.0);
-        for (var y = -P.range; y <= P.range; y++) {
-            for (var x = -P.range; x <= P.range; x++) {
-                try_vec(vec2f(f32(x), f32(y)));
+        let side = 2 * P.range + 1;
+        let total = side * side;
+        for (var base = 0; base < total; base += 8) {
+            var c: array<vec2f, 8>;
+            for (var j = 0; j < 8; j++) {
+                let i = base + j;
+                c[j] = vec2f(f32(i % side - P.range), f32(i / side - P.range));
             }
+            eval_batch(c, min(8, total - base));
         }
         refine(0.5);
     } else if (P.mode == 1u) {
@@ -124,12 +178,13 @@ fn search(@builtin(global_invocation_id) id: vec3u) {
         let cg = vec2i(floor((center * 0.5) / f32(BS)));
         let up = fetch(coarse, cg, P.cgrid) * 2.0;
         anchor = up;
-        try_vec(up);
-        try_vec(vec2f(0.0));
-        try_vec(fetch(coarse, cg + vec2i(1, 0), P.cgrid) * 2.0);
-        try_vec(fetch(coarse, cg + vec2i(-1, 0), P.cgrid) * 2.0);
-        try_vec(fetch(coarse, cg + vec2i(0, 1), P.cgrid) * 2.0);
-        try_vec(fetch(coarse, cg + vec2i(0, -1), P.cgrid) * 2.0);
+        seeds[0] = up;
+        seeds[1] = vec2f(0.0);
+        seeds[2] = fetch(coarse, cg + vec2i(1, 0), P.cgrid) * 2.0;
+        seeds[3] = fetch(coarse, cg + vec2i(-1, 0), P.cgrid) * 2.0;
+        seeds[4] = fetch(coarse, cg + vec2i(0, 1), P.cgrid) * 2.0;
+        seeds[5] = fetch(coarse, cg + vec2i(0, -1), P.cgrid) * 2.0;
+        try_seeds(seeds, 6);
         refine(1.0);
         refine(1.0);
         if (P.fine == 1u) { refine(0.5); refine(0.25); }
@@ -149,20 +204,23 @@ fn search(@builtin(global_invocation_id) id: vec3u) {
         // Anchor to the component-wise median of the neighbourhood.
         var xs = array<f32, 9>(own.x, n[0].x, n[1].x, n[2].x, n[3].x, n[4].x, n[5].x, n[6].x, n[7].x);
         var ys = array<f32, 9>(own.y, n[0].y, n[1].y, n[2].y, n[3].y, n[4].y, n[5].y, n[6].y, n[7].y);
-        for (var i = 0; i < 9; i++) {
-            for (var j = i + 1; j < 9; j++) {
-                if (xs[j] < xs[i]) { let t = xs[i]; xs[i] = xs[j]; xs[j] = t; }
-                if (ys[j] < ys[i]) { let t = ys[i]; ys[i] = ys[j]; ys[j] = t; }
+        for (var a = 0; a < 9; a++) {
+            for (var b = a + 1; b < 9; b++) {
+                if (xs[b] < xs[a]) { let t = xs[a]; xs[a] = xs[b]; xs[b] = t; }
+                if (ys[b] < ys[a]) { let t = ys[a]; ys[a] = ys[b]; ys[b] = t; }
             }
         }
         anchor = vec2f(xs[4], ys[4]);
-        try_vec(own);
-        for (var i = 0; i < 8; i++) { try_vec(n[i]); }
-        try_vec(anchor);
+        seeds[0] = own;
+        for (var a = 0; a < 8; a++) { seeds[a + 1] = n[a]; }
+        seeds[9] = anchor;
+        try_seeds(seeds, 10);
         refine(1.0);
         if (P.fine == 1u) { refine(0.5); refine(0.25); }
     }
-    textureStore(dst, g, vec4f(best_v, best_c, 0.0));
+    if (lid == 0u) {
+        textureStore(dst, g, vec4f(best_v, best_c, 0.0));
+    }
 }
 
 // 3x3 vector median: the neighbour vector with the smallest summed distance

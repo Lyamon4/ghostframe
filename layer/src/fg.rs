@@ -327,7 +327,10 @@ impl FrameGen {
         check((d.swap.get_swapchain_images_khr)(dev, swapchain, &mut n, images.as_mut_ptr()), "vkGetSwapchainImagesKHR")?;
 
         let levels = levels_for(w, h);
-        let finest = (if w.min(h) >= 360 { 1 } else { 0 }).min(levels.len() - 2);
+        // Same rule as the app (engine::search_level): the smallest level whose
+        // short side is at least max(180, short side / 6).
+        let need = 180.max(w.min(h) / 6);
+        let finest = levels.iter().rposition(|l| l.w.min(l.h) >= need).unwrap_or(0).min(levels.len() - 2);
         let (slot_format, swap_rb) = match format {
             vk::Format::B8G8R8A8_UNORM | vk::Format::B8G8R8A8_SRGB => (vk::Format::B8G8R8A8_UNORM, true),
             _ => (vk::Format::R8G8B8A8_UNORM, false),
@@ -728,7 +731,12 @@ impl FrameGen {
         // 3. Motion search and the in-between frame, into a swapchain image.
         if gen {
             for p in &self.passes {
-                self.dispatch(cmd, p.pipeline, p.sets[nb], p.gw.div_ceil(8), p.gh.div_ceil(8));
+                // search (2): one workgroup per block; median (3): 8x8 blocks per group
+                if p.pipeline == 2 {
+                    self.dispatch(cmd, p.pipeline, p.sets[nb], p.gw, p.gh);
+                } else {
+                    self.dispatch(cmd, p.pipeline, p.sets[nb], p.gw.div_ceil(8), p.gh.div_ceil(8));
+                }
             }
             self.dispatch(cmd, 4, self.compose_sets[nb], self.w.div_ceil(16), self.h.div_ceil(16));
             let target = self.images[gen_index as usize];

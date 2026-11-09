@@ -195,6 +195,17 @@ pub fn pyramid_levels(w: u32, h: u32) -> Vec<Level> {
     levels
 }
 
+/// The pyramid level motion is searched down to: the smallest one whose short
+/// side is still at least max(180, short side / 6) pixels (720p: 180,
+/// 1080p: 270, 1440p: 360). Measured with `bench`: searching finer is 2-3x
+/// slower and no better; the frame itself is always built at full resolution.
+pub fn search_level(levels: &[Level]) -> usize {
+    let short = |l: &Level| l.w.min(l.h);
+    let need = 180.max(short(&levels[0]) / 6);
+    let deepest = levels.iter().rposition(|l| short(l) >= need).unwrap_or(0);
+    deepest.min(levels.len().saturating_sub(2))
+}
+
 /// Create a device on the best available adapter (a software one if there
 /// is no GPU, so tests still run in CI).
 pub fn gpu() -> Result<(wgpu::Instance, wgpu::Adapter, wgpu::Device, wgpu::Queue)> {
@@ -530,7 +541,12 @@ impl Engine {
             for ps in &self.passes {
                 pass.set_pipeline(&self.me[ps.pipeline]);
                 pass.set_bind_group(0, &ps.groups[b], &[]);
-                pass.dispatch_workgroups(div_up(ps.gw, 8), div_up(ps.gh, 8), 1);
+                // search: one workgroup per block; median: 8x8 blocks per group
+                if ps.pipeline == 0 {
+                    pass.dispatch_workgroups(ps.gw, ps.gh, 1);
+                } else {
+                    pass.dispatch_workgroups(div_up(ps.gw, 8), div_up(ps.gh, 8), 1);
+                }
             }
             pass.set_pipeline(&self.compose);
             pass.set_bind_group(0, &self.compose_groups[b], &[]);

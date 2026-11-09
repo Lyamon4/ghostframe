@@ -102,7 +102,7 @@ fn save_png(path: &Path, w: u32, h: u32, rgba: &[u8]) -> Result<()> {
 /// resolution from 360p up (motion is estimated on 2x2-downscaled frames,
 /// the output is still built per pixel at full resolution).
 pub fn default_finest(w: u32, h: u32) -> usize {
-    if w.min(h) >= 360 { 1 } else { 0 }
+    engine::search_level(&engine::pyramid_levels(w, h))
 }
 
 fn new_engine(w: u32, h: u32, finest: Option<usize>) -> Result<(Engine, String)> {

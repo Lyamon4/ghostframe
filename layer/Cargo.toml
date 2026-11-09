@@ -1,6 +1,6 @@
 [package]
 name = "ghostframe-layer"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 description = "Vulkan layer that adds ghostframe frame generation to any Vulkan game (and to DX games through DXVK / VKD3D-Proton)."
 license = "MIT"
