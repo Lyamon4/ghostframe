@@ -1,19 +1,14 @@
-<h1 align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-    <img src="assets/logo-light.svg" alt="ghostframe" width="380">
-  </picture>
-</h1>
-
-**Open-source frame generation. No paid DLLs, no vendor lock-in.**
+<p align="center"><img src="assets/hero.png" alt="ghostframe: open-source frame generation for games" width="100%"></p>
 
 ghostframe creates the frames in between the ones a game renders: motion-compensated interpolation on the GPU, written from scratch in Rust and WGSL compute shaders. It runs on Vulkan, DirectX 12 and Metal through [wgpu](https://wgpu.rs).
 
 The goal: what Lossless Scaling's frame generation does, but free and open. Today the Linux port of that feature ([lsfg-vk](https://github.com/PancakeTAS/lsfg-vk)) still needs the DLL from the paid Windows app, and AMD's open FSR 3 frame generation only works in games that integrate it. ghostframe needs nothing but the frames themselves.
 
-![blend vs ghostframe vs the real frame](assets/compare.png)
+![repeat vs cross-fade vs ghostframe vs the real frame](assets/compare.png)
 
-*A dropped frame regenerated from its two neighbours. Left: a plain cross-fade. Middle: ghostframe. Right: the frame the game actually rendered.*
+*A frame the "game" never rendered. A camera pans across a photo at 60 fps; only every other frame is given to ghostframe, and it rebuilds the rest. Numbers are PSNR over all 30 rebuilt frames (higher is better): showing the previous frame again gives 22.9 dB, a cross-fade 25.6 dB (note the doubled climbers), ghostframe 42.6 dB.*
+
+![30 fps vs 60 fps with ghostframe, slowed down](assets/demo.webp)
 
 ## Play games with it
 
@@ -87,6 +82,10 @@ Environment variables: `GHOSTFRAME_LOG=file` writes the layer's log to a file (h
 
 *960×540, RTX 4060 (Vulkan). "Repeat frame" is what you see without frame generation; "cross-fade" is interpolation without motion.*
 
+![cross-fade vs ghostframe vs the real frame in the sprites and fast scenes](assets/compare-scenes.png)
+
+*The weak spot is visible in the "fast" row: where a fast object uncovers background, the edge tears.*
+
 Speed on an RTX 4060, per generated frame:
 
 | resolution | time | generated frames/s |
@@ -138,6 +137,7 @@ src/
   bin/ghostframe-tray.rs  notification-area app: running games, per-game switch
   testgame.rs a Vulkan test game + dump verification
 scripts/logo.py  the logo, tray and .exe icons, generated from one geometry
+scripts/readme_media.py  the README images, built from real ghostframe output
 layer/
   src/lib.rs  Vulkan layer: loader interface, dispatch chain, swapchain and present hooks
   src/fg.rs   the engine on raw Vulkan (ash): images, descriptors, pipelines, per-present commands

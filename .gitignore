@@ -2,3 +2,4 @@
 /bench-out
 /out
 *.mp4
+__pycache__/

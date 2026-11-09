@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
 
-out = Path(sys.argv[1])
 INK_DARK = "#f2f2f0"   # on dark backgrounds
 INK_LIGHT = "#16171a"  # on light backgrounds
 ACCENT = "#7fe3bd"     # spectral mint: the generated frame
@@ -123,6 +122,7 @@ def icon(px, ink=INK_DARK, accent=ACCENT, outline=None, pad=0.0):
 
 
 def main():
+    out = Path(sys.argv[1])
     (out / "logo-dark.svg").write_text(logo_svg(INK_DARK, ACCENT, "gd"), encoding="utf-8")
     (out / "logo-light.svg").write_text(logo_svg(INK_LIGHT, ACCENT_LIGHT, "gl"), encoding="utf-8")
     (out / "mark.svg").write_text(standalone_mark(INK_DARK, ACCENT, "gm"), encoding="utf-8")
@@ -148,5 +148,6 @@ def main():
         sheet.save(sys.argv[2])
 
 
-main()
-print("ok")
+if __name__ == "__main__":
+    main()
+    print("ok")
