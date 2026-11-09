@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Software Vulkan for the GPU test (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
+      - name: Build
+        run: cargo build --release
+      - name: Tests (the GPU test regenerates frames and checks PSNR against ground truth)
+        run: cargo test --release -- --nocapture
+      - name: Benchmark
+        run: cargo run --release -- bench --size 640x360 --pairs 3
