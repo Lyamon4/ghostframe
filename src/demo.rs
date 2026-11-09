@@ -200,6 +200,10 @@ impl App {
         }
 
         let g = self.gfx.as_ref().unwrap();
+        // Minimised or tiny window: nothing to draw into.
+        if g.config.width < 16 || g.config.height < 2 {
+            return Ok(());
+        }
         let frame = match g.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
             _ => {
