@@ -64,8 +64,10 @@ enum Cmd {
     Install,
     /// Remove the Vulkan layer.
     Uninstall,
-    /// Show whether the layer is installed.
+    /// Show whether the layer is installed and which games use it.
     Status,
+    /// Start the notification-area app (Windows): running games, per-game switch.
+    Tray,
     /// Start a game with frame generation: ghostframe run game.exe [args]
     Run {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
@@ -253,6 +255,7 @@ fn main() -> Result<()> {
         Cmd::Install => install::install(),
         Cmd::Uninstall => install::uninstall(),
         Cmd::Status => install::status(),
+        Cmd::Tray => install::start_tray(false),
         Cmd::Run { command } => install::run(&command),
         Cmd::TestGame { size, fps, frames } => {
             let (w, h) = parse_size(&size)?;

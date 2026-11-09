@@ -17,5 +17,11 @@ pollster = "1"
 wgpu = "30"
 winit = "0.30"
 
+[target.'cfg(windows)'.dependencies]
+tray-icon = "0.26"
+sys-locale = "0.3"
+serde_json = "1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_System_Console"] }
+
 [profile.release]
 opt-level = 3

@@ -1,7 +1,11 @@
 //! One-command install of the Vulkan layer.
 //!
-//! The layer is registered as an *implicit* layer that stays inactive unless
-//! `ENABLE_GHOSTFRAME=1` is set, so nothing changes for other programs:
+//! The layer is registered as an *implicit* layer, so the Vulkan loader puts
+//! it into every Vulkan game without any launch options. It stays passive
+//! (frames pass through untouched) until frame generation is switched on for
+//! that game in the tray app, or the game is started with
+//! `ENABLE_GHOSTFRAME=1` (`ghostframe run`). `DISABLE_GHOSTFRAME=1` keeps it
+//! out of a program entirely.
 //! Windows: a JSON manifest + HKCU\Software\Khronos\Vulkan\ImplicitLayers
 //! Linux:   ~/.local/share/vulkan/implicit_layer.d/ghostframe_layer.json
 
@@ -77,7 +81,6 @@ pub fn manifest(lib: &Path) -> String {
     "functions": {{
       "vkNegotiateLoaderLayerInterfaceVersion": "vkNegotiateLoaderLayerInterfaceVersion"
     }},
-    "enable_environment": {{ "{ENABLE_VAR}": "1" }},
     "disable_environment": {{ "DISABLE_GHOSTFRAME": "1" }}
   }}
 }}
@@ -110,12 +113,77 @@ pub fn install() -> Result<()> {
     println!("  library   {}", lib.display());
     println!("  manifest  {}", man.display());
     println!();
-    println!("It stays off until you ask for it, per game:");
-    println!("  ghostframe run <game executable> [args]");
-    println!("  Steam launch options:  {ENABLE_VAR}=1 %command%");
-    println!("  anything else:         set {ENABLE_VAR}=1 in the game's environment");
+    println!("Just start a Vulkan game. Frame generation stays off until you switch it on:");
+    if cfg!(windows) {
+        println!("  click the ghostframe icon in the notification area -> the game -> Frame generation");
+    } else {
+        println!("  Steam launch options:  {ENABLE_VAR}=1 %command%");
+    }
+    println!("  or start it with:      ghostframe run <game executable> [args]");
     println!("Remove it again with: ghostframe uninstall");
+    if cfg!(windows) {
+        match start_tray(true) {
+            Ok(()) => println!("
+The ghostframe icon is now in the notification area: click it to see running games and switch frame generation per game."),
+            Err(e) => println!("
+(tray app not started: {e})"),
+        }
+    }
     Ok(())
+}
+
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+fn tray_exe() -> Result<PathBuf> {
+    let exe = std::env::current_exe()?;
+    let p = exe.parent().context("no executable directory")?.join("ghostframe-tray.exe");
+    if !p.exists() {
+        bail!("{} not found - build it with: cargo build --release --workspace", p.display());
+    }
+    Ok(p)
+}
+
+/// Start the notification-area app (it exits at once if it is already
+/// running). With `autostart`, it also starts with Windows from now on.
+pub fn start_tray(autostart: bool) -> Result<()> {
+    if !cfg!(windows) {
+        bail!("the tray app is Windows-only for now; use `ghostframe status`");
+    }
+    let exe = tray_exe()?;
+    if autostart {
+        let _ = reg(&["add", RUN_KEY, "/v", "ghostframe", "/t", "REG_SZ", "/d", &format!("\"{}\"", exe.display()), "/f"]);
+    }
+    use std::process::Stdio;
+    // Our console handles are inheritable; a child that outlives us would
+    // keep a pipe like `ghostframe install | more` open forever.
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
+        use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
+        for h in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+            SetHandleInformation(GetStdHandle(h), HANDLE_FLAG_INHERIT, 0);
+        }
+    }
+    std::process::Command::new(&exe)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn().with_context(|| format!("could not start {}", exe.display()))?;
+    Ok(())
+}
+
+/// Status files the layer writes from inside running games.
+fn running_sessions() -> Vec<String> {
+    let Ok(dir) = data_dir() else { return vec![] };
+    let Ok(entries) = std::fs::read_dir(dir.join("sessions")) else { return vec![] };
+    let fresh = |e: &std::fs::DirEntry| {
+        e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|a| a.as_secs() < 3)
+    };
+    entries
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json") && fresh(e))
+        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+        .collect()
 }
 
 pub fn uninstall() -> Result<()> {
@@ -126,6 +194,10 @@ pub fn uninstall() -> Result<()> {
     let _ = std::fs::remove_file(&man);
     let lib = data_dir()?.join(lib_file());
     let _ = std::fs::remove_file(&lib);
+    if cfg!(windows) {
+        let _ = reg(&["delete", RUN_KEY, "/v", "ghostframe", "/f"]);
+        let _ = std::process::Command::new("taskkill").args(["/IM", "ghostframe-tray.exe", "/F"]).output();
+    }
     println!("ghostframe layer removed");
     Ok(())
 }
@@ -142,7 +214,14 @@ pub fn status() -> Result<()> {
     println!("library    {} {}", lib.display(), if lib.exists() { "(present)" } else { "(missing)" });
     println!("manifest   {} {}", man.display(), if man.exists() { "(present)" } else { "(missing)" });
     println!("registered {}", if registered { "yes" } else { "no" });
-    println!("enabled    only for programs started with {ENABLE_VAR}=1 (now: {})", std::env::var(ENABLE_VAR).unwrap_or_else(|_| "unset".into()));
+    println!("loaded     into every Vulkan game; generation per game from the tray, or {ENABLE_VAR}=1");
+    let games = running_sessions();
+    if games.is_empty() {
+        println!("running    no game is using ghostframe right now");
+    }
+    for g in games {
+        println!("running    {g}");
+    }
     Ok(())
 }
 
@@ -166,7 +245,7 @@ mod tests {
     fn manifest_is_valid_json_shape() {
         let m = super::manifest(std::path::Path::new(r"C:\x\ghostframe_layer.dll"));
         assert!(m.contains(r#""library_path": "C:\\x\\ghostframe_layer.dll""#));
-        assert!(m.contains(r#""enable_environment": { "ENABLE_GHOSTFRAME": "1" }"#));
+        assert!(!m.contains("enable_environment"));
         assert!(m.contains("disable_environment"));
     }
 }

@@ -27,7 +27,7 @@ jobs:
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path target/release/ghostframe.exe, target/release/ghostframe_layer.dll -DestinationPath ${{ matrix.asset }}
+        run: Compress-Archive -Path target/release/ghostframe.exe, target/release/ghostframe-tray.exe, target/release/ghostframe_layer.dll -DestinationPath ${{ matrix.asset }}
       - name: Package (Linux)
         if: runner.os == 'Linux'
         run: tar czf ${{ matrix.asset }} -C target/release ghostframe libghostframe_layer.so

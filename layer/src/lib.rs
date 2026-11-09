@@ -12,6 +12,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 mod fg;
+mod session;
 
 use ash::vk;
 use ash::vk::Handle;
@@ -101,6 +102,20 @@ struct SwapchainData {
 static INSTANCES: Mutex<Option<HashMap<usize, Arc<InstanceData>>>> = Mutex::new(None);
 static DEVICES: Mutex<Option<HashMap<usize, Arc<DeviceData>>>> = Mutex::new(None);
 static SWAPCHAINS: Mutex<Option<HashMap<u64, SwapchainData>>> = Mutex::new(None);
+/// This process's entry in the tray (outer None: not created yet).
+static SESSION: Mutex<Option<Option<session::Session>>> = Mutex::new(None);
+
+/// Whether frame generation is switched on for this game right now.
+fn generation_on() -> bool {
+    let mut s = SESSION.lock().unwrap();
+    s.get_or_insert_with(session::Session::new).as_ref().is_some_and(|s| s.enabled)
+}
+
+fn report_frame(generated: bool, extent: vk::Extent2D) {
+    if let Some(Some(s)) = SESSION.lock().unwrap().as_mut() {
+        s.frame(generated as u64, extent.width, extent.height);
+    }
+}
 
 /// Loader dispatch key: the first pointer stored in every dispatchable handle.
 unsafe fn key<H: Handle>(h: H) -> usize {
@@ -368,9 +383,17 @@ unsafe extern "system" fn queue_present(queue: vk::Queue, info: *const vk::Prese
         drop(sw);
         return pass(&d);
     };
-    if !sc.supported || sc.failed {
+    let extent = sc.extent;
+    // Not switched on in the tray (the default): the game runs untouched,
+    // and the engine is not even created until the first click.
+    if !sc.supported || sc.failed || !generation_on() {
+        if let Some(g) = sc.fg.as_mut() {
+            g.pause();
+        }
         drop(sw);
-        return pass(&d);
+        let r = pass(&d);
+        report_frame(false, extent);
+        return r;
     }
     if sc.fg.is_none() && d.set_loader_data.is_none() {
         sc.failed = true;
@@ -405,7 +428,10 @@ unsafe extern "system" fn queue_present(queue: vk::Queue, info: *const vk::Prese
             }
         }
     }
-    sc.fg.as_mut().unwrap().present(queue, &*info)
+    let (r, generated) = sc.fg.as_mut().unwrap().present(queue, &*info);
+    drop(sw);
+    report_frame(generated, extent);
+    r
 }
 
 // ---- dispatch ------------------------------------------------------------

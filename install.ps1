@@ -9,6 +9,7 @@ $zip = Join-Path $env:TEMP 'ghostframe-windows-x64.zip'
 Write-Host "Downloading the latest ghostframe release..."
 if ($env:GHOSTFRAME_ZIP) { Copy-Item $env:GHOSTFRAME_ZIP $zip }   # local build, for testing
 else { Invoke-WebRequest "https://github.com/$repo/releases/latest/download/ghostframe-windows-x64.zip" -OutFile $zip }
+Stop-Process -Name ghostframe-tray -ErrorAction SilentlyContinue   # an older version may hold the file
 Expand-Archive $zip -DestinationPath $dir -Force
 Remove-Item $zip
 
@@ -21,3 +22,4 @@ if ($userPath -notlike "*$dir*") {
 }
 Write-Host ""
 Write-Host "Ready. Start a Vulkan game with:  ghostframe run <game.exe>"
+Write-Host "Click the ghostframe icon in the notification area to see it and switch it per game."

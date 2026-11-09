@@ -667,9 +667,16 @@ impl FrameGen {
         (self.d.fp.cmd_copy_image)(cmd, src, src_layout, dst, dst_layout, 1, &region);
     }
 
+    /// Switched off in the tray: the next frames pass through untouched,
+    /// and generation starts fresh (no stale previous frame) when it is back.
+    pub fn pause(&mut self) {
+        self.pushed = 0;
+    }
+
     /// Replace one present by two: the generated in-between frame, then the
-    /// real one. Returns the real present's result to the game.
-    pub unsafe fn present(&mut self, queue: vk::Queue, info: &vk::PresentInfoKHR<'_>) -> vk::Result {
+    /// real one. Returns the real present's result to the game and whether
+    /// a frame was generated.
+    pub unsafe fn present(&mut self, queue: vk::Queue, info: &vk::PresentInfoKHR<'_>) -> (vk::Result, bool) {
         let t0 = Instant::now();
         let fp = &self.d.fp;
         let sw = &self.d.swap;
@@ -753,7 +760,7 @@ impl FrameGen {
         let r = (fp.queue_submit)(queue, 1, &si, fence);
         if r != vk::Result::SUCCESS {
             log(&format!("vkQueueSubmit failed: {r:?}"));
-            return r;
+            return (r, false);
         }
 
         let swapchains = [self.swapchain];
@@ -798,7 +805,7 @@ impl FrameGen {
             self.skipped = 0;
             self.spent = 0.0;
         }
-        result
+        (result, gen)
     }
 
     /// Debugging and end-to-end tests: write the last generated frame to a

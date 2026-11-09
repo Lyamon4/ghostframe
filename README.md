@@ -14,7 +14,7 @@ The goal: what Lossless Scaling's frame generation does, but free and open. Toda
 
 ghostframe ships as a **Vulkan layer**, the same mechanism MangoHud and OBS use. It sits between the game and the driver, catches every presented frame, generates the in-between one on the game's own GPU queue, and presents both.
 
-**Install** (one command; the layer stays off until a game asks for it):
+**Install** (one command):
 
 ```powershell
 # Windows
@@ -25,15 +25,20 @@ irm https://raw.githubusercontent.com/Lyamon4/ghostframe/main/install.ps1 | iex
 curl -fsSL https://raw.githubusercontent.com/Lyamon4/ghostframe/main/install.sh | sh
 ```
 
-**Use it, per game:**
+**Use it.** On Windows, just start the game the way you always do. No launch options, no commands. Click the ghostframe icon in the notification area: it lists the games running right now with their frame rate, and **Frame generation** switches it on or off for that game within a second, without restarting it. The choice is remembered per game. With no game running it says so.
+
+![the ghostframe tray menu](assets/tray.png)
+
+Until you switch it on, the layer only watches: frames pass through untouched and the generation engine isn't even created. The tray app starts with Windows (untick it in the menu if you don't want that).
 
 | where | how |
 |---|---|
-| Steam (Linux, Proton or native) | launch options: `ENABLE_GHOSTFRAME=1 %command%` |
-| any game | `ghostframe run <game executable> [args]` |
-| anywhere else | set `ENABLE_GHOSTFRAME=1` in the game's environment |
+| Windows | start the game, click the tray icon, tick **Frame generation** |
+| Steam on Linux (Proton or native) | launch options: `ENABLE_GHOSTFRAME=1 %command%` |
+| any game, generation on from the start | `ghostframe run <game executable> [args]` |
+| keep ghostframe out of a program | `DISABLE_GHOSTFRAME=1` in its environment |
 
-`ghostframe status` shows what is installed, `ghostframe uninstall` removes it.
+`ghostframe status` shows what is installed and which games use it, `ghostframe tray` starts the tray app, `ghostframe uninstall` removes everything.
 
 **Which games:**
 
@@ -57,7 +62,7 @@ The layer can dump a generated frame (`GHOSTFRAME_DUMP=file`, `GHOSTFRAME_DUMP_F
 | cross-fade | 28.9 dB |
 | **ghostframe, through the layer** | **35.6 dB** |
 
-**Online games:** Vulkan layers are an ordinary, documented mechanism (Steam's overlay, OBS and MangoHud use it), but anti-cheat systems make their own rules and frame generation adds latency. Use ghostframe in single-player games, not in competitive online ones.
+**Online games:** Vulkan layers are an ordinary, documented mechanism (Steam's overlay, OBS and MangoHud use it), and the Vulkan loader puts ghostframe into every Vulkan game, like theirs. But anti-cheat systems make their own rules and frame generation adds latency. Use ghostframe in single-player games; for a competitive online game, keep it out with `DISABLE_GHOSTFRAME=1` or uninstall it while you play.
 
 **Pacing:** generated frames are presented right before the real one, so with vsync the display alternates real and generated frames. As with every frame-generation tool, the smoothest result comes from capping the game at half your refresh rate (30 for 60 Hz, 72 for 144 Hz). It adds about one frame of latency.
 
@@ -123,12 +128,14 @@ src/
   shaders/    pyramid.wgsl, motion.wgsl, compose.wgsl
   scene.rs    procedural game-like test scenes with exact ground truth, PSNR
   demo.rs     side-by-side live window (winit + wgpu)
-  main.rs     CLI: bench, speed, interp, demo, install, run, test-game, verify-dump
-  install.rs  layer registration (Windows registry / Linux implicit_layer.d)
+  main.rs     CLI: bench, speed, interp, demo, install, run, tray, status, test-game, verify-dump
+  install.rs  layer registration (Windows registry / Linux implicit_layer.d), tray autostart
+  bin/ghostframe-tray.rs  notification-area app: running games, per-game switch
   testgame.rs a Vulkan test game + dump verification
 layer/
   src/lib.rs  Vulkan layer: loader interface, dispatch chain, swapchain and present hooks
   src/fg.rs   the engine on raw Vulkan (ash): images, descriptors, pipelines, per-present commands
+  src/session.rs  status files for the tray (sessions/<pid>.json) and per-game settings (games.cfg)
   build.rs    compiles src/shaders/*.wgsl to SPIR-V with naga
 ```
 
@@ -140,6 +147,7 @@ ghostframe is a working interpolation engine with an honest benchmark and a Vulk
 - [x] Ground-truth benchmark, speed test, PNG-sequence interpolation, live demo
 - [x] **Vulkan layer** for games (`ENABLE_GHOSTFRAME=1 %command%`): hooks `vkQueuePresentKHR`, runs the same shaders (WGSL compiled to SPIR-V by naga at build time) on the game's device and queue, presents the extra frames. Tested end to end on Windows (RTX 4060); Linux is built and tested in CI on a software GPU.
 - [x] One-command install (`install.ps1`, `install.sh`, `ghostframe install`) and release builds.
+- [x] Tray app on Windows: games appear by themselves, frame generation switched per game with one click.
 - [ ] Testing on real Proton games and on a Steam Deck.
 - [ ] Frame pacing: spacing the generated present to the middle of the frame interval instead of right before the real one.
 - [ ] 3× / 4× generation in the layer (the engine already supports any `t`).
