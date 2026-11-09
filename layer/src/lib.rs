@@ -285,9 +285,18 @@ unsafe extern "system" fn destroy_device(device: vk::Device, alloc: *const vk::A
     for g in gens {
         g.destroy();
     }
-    let data = DEVICES.lock().unwrap().as_mut().and_then(|m| m.remove(&k));
+    let (data, last) = {
+        let mut devs = DEVICES.lock().unwrap();
+        let data = devs.as_mut().and_then(|m| m.remove(&k));
+        (data, devs.as_ref().is_none_or(|m| m.is_empty()))
+    };
     if let Some(d) = data {
         (d.fp.destroy_device)(device, alloc);
+    }
+    if last {
+        // The game is shutting down: leave the tray's list now. (A static is
+        // never dropped, so this is where the status file goes away.)
+        drop(SESSION.lock().unwrap().take());
     }
 }
 

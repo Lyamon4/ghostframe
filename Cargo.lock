@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "ghostframe"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -854,7 +854,7 @@ dependencies = [
 
 [[package]]
 name = "ghostframe-layer"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "ash",
  "naga",
