@@ -138,7 +138,10 @@ pub fn log(msg: &str) {
                 let _ = writeln!(f, "ghostframe: {msg}");
             }
         }
-        _ => eprintln!("ghostframe: {msg}"),
+        // The layer sits in every Vulkan program; only talk on the console
+        // when asked to run (`ghostframe run`, ENABLE_GHOSTFRAME=1).
+        _ if std::env::var("ENABLE_GHOSTFRAME").is_ok_and(|v| v == "1") => eprintln!("ghostframe: {msg}"),
+        _ => {}
     }
 }
 

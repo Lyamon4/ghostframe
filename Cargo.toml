@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Open-source frame generation for any game: GPU motion estimation and frame interpolation, no proprietary bits."
 license = "MIT"
+default-run = "ghostframe"
 
 [workspace]
 members = [".", "layer"]
