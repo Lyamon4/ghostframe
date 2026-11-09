@@ -34,7 +34,7 @@ struct ComposeParams {
     t: f32,
     block: f32,
     vscale: f32,
-    _pad: f32,
+    swap_rb: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -264,7 +264,7 @@ impl Engine {
                 tex_entry(1, hw),
                 tex_entry(2, false),
                 tex_entry(3, false),
-                storage_entry(4, F::Rg32Float),
+                storage_entry(4, F::Rgba32Float),
                 uniform_entry(5),
                 sampler_entry(6),
             ],
@@ -310,10 +310,10 @@ impl Engine {
             .enumerate()
             .map(|(l, lv)| {
                 let u = U::TEXTURE_BINDING | U::STORAGE_BINDING;
-                [tex(&device, &format!("field{l}a"), lv.gw, lv.gh, F::Rg32Float, u), tex(&device, &format!("field{l}b"), lv.gw, lv.gh, F::Rg32Float, u)]
+                [tex(&device, &format!("field{l}a"), lv.gw, lv.gh, F::Rgba32Float, u), tex(&device, &format!("field{l}b"), lv.gw, lv.gh, F::Rgba32Float, u)]
             })
             .collect();
-        let (_dummy, dummy_view) = tex(&device, "dummy", 1, 1, F::Rg32Float, U::TEXTURE_BINDING);
+        let (_dummy, dummy_view) = tex(&device, "dummy", 1, 1, F::Rgba32Float, U::TEXTURE_BINDING);
         let (out, out_view) = tex(&device, "out", width, height, F::Rgba8Unorm, U::STORAGE_BINDING | U::TEXTURE_BINDING | U::COPY_SRC);
         let lsampler = device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Linear,
@@ -521,7 +521,7 @@ impl Engine {
             t: t.clamp(0.0, 1.0),
             block: BLOCK as f32 * scale,
             vscale: scale,
-            _pad: 0.0,
+            swap_rb: 0.0,
         };
         self.queue.write_buffer(&self.compose_params, 0, bytemuck::bytes_of(&p));
         let mut enc = self.device.create_command_encoder(&Default::default());

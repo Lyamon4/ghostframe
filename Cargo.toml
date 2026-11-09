@@ -5,6 +5,9 @@ edition = "2021"
 description = "Open-source frame generation for any game: GPU motion estimation and frame interpolation, no proprietary bits."
 license = "MIT"
 
+[workspace]
+members = [".", "layer"]
+
 [dependencies]
 anyhow = "1"
 bytemuck = { version = "1", features = ["derive"] }

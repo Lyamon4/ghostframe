@@ -18,9 +18,29 @@ jobs:
       - name: Software Vulkan for the GPU test (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
-      - name: Build
-        run: cargo build --release
+      - name: Build (app and Vulkan layer)
+        run: cargo build --release --workspace
       - name: Tests (the GPU test regenerates frames and checks PSNR against ground truth)
-        run: cargo test --release -- --nocapture
+        run: cargo test --release --workspace -- --nocapture
       - name: Benchmark
         run: cargo run --release -- bench --size 640x360 --pairs 3
+
+  # The whole game path on Linux: install the layer, run the Vulkan test game
+  # through it on a software GPU and a virtual display, check the generated
+  # frame against ground truth.
+  layer-e2e-linux:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers xvfb
+      - run: cargo build --release --workspace
+      - name: Game through the layer
+        run: |
+          target/release/ghostframe install
+          export GHOSTFRAME_LOG=$PWD/layer.log GHOSTFRAME_DUMP=$PWD/dump.bin GHOSTFRAME_DUMP_FRAME=20
+          xvfb-run -a target/release/ghostframe run target/release/ghostframe test-game --size 640x360 --fps 10 --frames 40
+          cat layer.log
+          target/release/ghostframe verify-dump dump.bin

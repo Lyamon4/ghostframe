@@ -1,0 +1,36 @@
+name: release
+
+# Push a tag like v0.2.0 to build and publish ready-to-run binaries that the
+# install scripts download.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            asset: ghostframe-windows-x64.zip
+          - os: ubuntu-latest
+            asset: ghostframe-linux-x64.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build app and Vulkan layer
+        run: cargo build --release --workspace
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/release/ghostframe.exe, target/release/ghostframe_layer.dll -DestinationPath ${{ matrix.asset }}
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: tar czf ${{ matrix.asset }} -C target/release ghostframe libghostframe_layer.so
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}

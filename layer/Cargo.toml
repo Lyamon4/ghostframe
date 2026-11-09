@@ -1,0 +1,16 @@
+[package]
+name = "ghostframe-layer"
+version = "0.1.0"
+edition = "2021"
+description = "Vulkan layer that adds ghostframe frame generation to any Vulkan game (and to DX games through DXVK / VKD3D-Proton)."
+license = "MIT"
+
+[lib]
+name = "ghostframe_layer"
+crate-type = ["cdylib"]
+
+[dependencies]
+ash = { version = "0.38", default-features = false, features = ["std", "debug"] }
+
+[build-dependencies]
+naga = { version = "30", features = ["wgsl-in", "spv-out"] }

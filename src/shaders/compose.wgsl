@@ -9,7 +9,7 @@ struct Params {
     t: f32,
     block: f32,   // block size of the motion field in output pixels
     vscale: f32,  // field vectors are in pixels of a smaller level
-    _pad: f32,
+    swap_rb: f32, // 1 = write BGRA order (for raw copies into BGRA swapchains)
 }
 
 @group(0) @binding(0) var ca: texture_2d<f32>;
@@ -84,5 +84,6 @@ fn compose(@builtin(global_invocation_id) id: vec3u) {
     let inv = 1.0 / vec2f(P.size);
     let a = textureSampleLevel(ca, smp, (p - P.t * v) * inv, 0.0);
     let b = textureSampleLevel(cb, smp, (p + (1.0 - P.t) * v) * inv, 0.0);
-    textureStore(dst, vec2i(id.xy), vec4f(mix(a.rgb, b.rgb, P.t), 1.0));
+    let c = mix(a.rgb, b.rgb, P.t);
+    textureStore(dst, vec2i(id.xy), select(vec4f(c, 1.0), vec4f(c.bgr, 1.0), P.swap_rb > 0.5));
 }

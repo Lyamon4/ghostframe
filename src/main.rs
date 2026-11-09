@@ -2,7 +2,9 @@
 
 mod demo;
 mod engine;
+mod install;
 mod scene;
+mod testgame;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -58,6 +60,29 @@ enum Cmd {
         #[arg(long, default_value = "800x450")]
         size: String,
     },
+    /// Install the Vulkan layer for games (off until a game asks for it).
+    Install,
+    /// Remove the Vulkan layer.
+    Uninstall,
+    /// Show whether the layer is installed.
+    Status,
+    /// Start a game with frame generation: ghostframe run game.exe [args]
+    Run {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        command: Vec<String>,
+    },
+    /// A small Vulkan test game for checking the layer end to end.
+    TestGame {
+        #[arg(long, default_value = "960x540")]
+        size: String,
+        #[arg(long, default_value_t = 30.0)]
+        fps: f64,
+        /// Quit after this many frames.
+        #[arg(long)]
+        frames: Option<u64>,
+    },
+    /// Compare a frame dumped by the layer (GHOSTFRAME_DUMP) with ground truth.
+    VerifyDump { file: PathBuf },
     /// Show which GPU and backend ghostframe uses.
     Info,
 }
@@ -225,6 +250,15 @@ fn main() -> Result<()> {
             let (w, h) = parse_size(&size)?;
             demo::run(w, h)
         }
+        Cmd::Install => install::install(),
+        Cmd::Uninstall => install::uninstall(),
+        Cmd::Status => install::status(),
+        Cmd::Run { command } => install::run(&command),
+        Cmd::TestGame { size, fps, frames } => {
+            let (w, h) = parse_size(&size)?;
+            testgame::run(w, h, fps, frames, Kind::Sprites)
+        }
+        Cmd::VerifyDump { file } => testgame::verify_dump(&file, Kind::Sprites),
         Cmd::Info => {
             let (_i, adapter, _d, _q) = engine::gpu()?;
             let info = adapter.get_info();

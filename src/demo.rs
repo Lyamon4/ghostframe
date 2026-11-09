@@ -16,7 +16,7 @@ use winit::window::{Window, WindowId};
 
 const OUT_HZ: f64 = 60.0;
 
-const BLIT: &str = r#"
+pub(crate) const BLIT: &str = r#"
 @group(0) @binding(0) var tex: texture_2d<f32>;
 @group(0) @binding(1) var smp: sampler;
 struct V { @builtin(position) pos: vec4f, @location(0) uv: vec2f }

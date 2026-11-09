@@ -10,6 +10,59 @@ The goal: what Lossless Scaling's frame generation does, but free and open. Toda
 
 *A dropped frame regenerated from its two neighbours. Left: a plain cross-fade. Middle: ghostframe. Right: the frame the game actually rendered.*
 
+## Play games with it
+
+ghostframe ships as a **Vulkan layer**, the same mechanism MangoHud and OBS use. It sits between the game and the driver, catches every presented frame, generates the in-between one on the game's own GPU queue, and presents both.
+
+**Install** (one command; the layer stays off until a game asks for it):
+
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/Lyamon4/ghostframe/main/install.ps1 | iex
+```
+```bash
+# Linux / Steam Deck desktop mode
+curl -fsSL https://raw.githubusercontent.com/Lyamon4/ghostframe/main/install.sh | sh
+```
+
+**Use it, per game:**
+
+| where | how |
+|---|---|
+| Steam (Linux, Proton or native) | launch options: `ENABLE_GHOSTFRAME=1 %command%` |
+| any game | `ghostframe run <game executable> [args]` |
+| anywhere else | set `ENABLE_GHOSTFRAME=1` in the game's environment |
+
+`ghostframe status` shows what is installed, `ghostframe uninstall` removes it.
+
+**Which games:**
+
+- **Linux and Steam Deck:** practically everything. Native Vulkan games, and DirectX 9–12 games through Proton, because DXVK and VKD3D-Proton turn them into Vulkan before they reach the screen.
+- **Windows:** games that render with Vulkan (for example DOOM Eternal, or Red Dead Redemption 2 in Vulkan mode). Plain DirectX games on Windows don't go through Vulkan, so the layer can't see them; that needs window capture (on the roadmap).
+- Swapchains in 8-bit BGRA/RGBA formats (what almost every game uses). HDR and 10-bit swapchains are passed through untouched.
+
+**Checked end to end, inside a real Vulkan swapchain.** `ghostframe test-game` is a small Vulkan game that renders the benchmark scene at 30 fps. Run through the installed layer on an RTX 4060:
+
+```
+ghostframe: frame generation on: 960x540 B8G8R8A8_UNORM, 4 swapchain images
+ghostframe: 30 real fps -> 61 presented fps (152 generated, 0 skipped, 0.19 ms/frame in the layer on the CPU)
+ghostframe: dumped generated frame between real frames 198 and 199
+```
+
+The layer can dump a generated frame (`GHOSTFRAME_DUMP=file`, `GHOSTFRAME_DUMP_FRAME=n`), and `ghostframe verify-dump` compares it with the frame the game would have rendered:
+
+| that frame, in-game | PSNR |
+|---|---|
+| repeat (no frame generation) | 26.2 dB |
+| cross-fade | 28.9 dB |
+| **ghostframe, through the layer** | **35.6 dB** |
+
+**Online games:** Vulkan layers are an ordinary, documented mechanism (Steam's overlay, OBS and MangoHud use it), but anti-cheat systems make their own rules and frame generation adds latency. Use ghostframe in single-player games, not in competitive online ones.
+
+**Pacing:** generated frames are presented right before the real one, so with vsync the display alternates real and generated frames. As with every frame-generation tool, the smoothest result comes from capping the game at half your refresh rate (30 for 60 Hz, 72 for 144 Hz). It adds about one frame of latency.
+
+Environment variables: `GHOSTFRAME_LOG=file` writes the layer's log to a file (handy for games without a console), `GHOSTFRAME_MODE=off` disables generation while keeping the layer loaded.
+
 ## Measured, not eyeballed
 
 `ghostframe bench` renders game-like scenes, drops every other frame of a 60 fps sequence, regenerates it, and compares it with the real one (PSNR, higher is better):
@@ -38,6 +91,8 @@ Comfortably fast enough to take a 1080p game from 30 to 60 fps or from 60 to 120
 
 ```bash
 git clone https://github.com/Lyamon4/ghostframe && cd ghostframe
+cargo build --release --workspace       # app + Vulkan layer
+target/release/ghostframe install       # register the freshly built layer (re-run after rebuilding)
 cargo run --release -- demo            # live window: a game at 30 fps vs ghostframe at 60 fps
 cargo run --release -- bench --save out # the quality table above, plus example frames
 cargo run --release -- speed            # GPU time per frame at 1080p
@@ -68,16 +123,26 @@ src/
   shaders/    pyramid.wgsl, motion.wgsl, compose.wgsl
   scene.rs    procedural game-like test scenes with exact ground truth, PSNR
   demo.rs     side-by-side live window (winit + wgpu)
-  main.rs     CLI: bench, speed, interp, demo, info
+  main.rs     CLI: bench, speed, interp, demo, install, run, test-game, verify-dump
+  install.rs  layer registration (Windows registry / Linux implicit_layer.d)
+  testgame.rs a Vulkan test game + dump verification
+layer/
+  src/lib.rs  Vulkan layer: loader interface, dispatch chain, swapchain and present hooks
+  src/fg.rs   the engine on raw Vulkan (ash): images, descriptors, pipelines, per-present commands
+  build.rs    compiles src/shaders/*.wgsl to SPIR-V with naga
 ```
 
 ## Status and roadmap
 
-ghostframe is a working interpolation engine with an honest benchmark, not yet a drop-in game tool.
+ghostframe is a working interpolation engine with an honest benchmark and a Vulkan layer that runs it inside games.
 
 - [x] GPU motion estimation and frame composition, any `t`
 - [x] Ground-truth benchmark, speed test, PNG-sequence interpolation, live demo
-- [ ] **Linux Vulkan layer** (`ENABLE_GHOSTFRAME=1 %command%`): hook `vkQueuePresentKHR`, run the same shaders (WGSL → SPIR-V via naga) on the game's device, present the extra frames. Steam Deck is the main target.
+- [x] **Vulkan layer** for games (`ENABLE_GHOSTFRAME=1 %command%`): hooks `vkQueuePresentKHR`, runs the same shaders (WGSL compiled to SPIR-V by naga at build time) on the game's device and queue, presents the extra frames. Tested end to end on Windows (RTX 4060); Linux is built and tested in CI on a software GPU.
+- [x] One-command install (`install.ps1`, `install.sh`, `ghostframe install`) and release builds.
+- [ ] Testing on real Proton games and on a Steam Deck.
+- [ ] Frame pacing: spacing the generated present to the middle of the frame interval instead of right before the real one.
+- [ ] 3× / 4× generation in the layer (the engine already supports any `t`).
 - [ ] **Windows window capture**, Lossless Scaling style: capture a game window and present at 2× in a borderless overlay.
 - [ ] **Better occlusions.** The weak spot is visible in the "fast" row: where an object uncovers background, both frames don't contain the same pixels. Using a third frame to decide which side is visible is the next step.
 - [ ] Optional small learned refinement pass for edges.

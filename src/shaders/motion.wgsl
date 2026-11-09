@@ -24,7 +24,7 @@ struct Params {
 @group(0) @binding(1) var lb: texture_2d<f32>;
 @group(0) @binding(2) var prev: texture_2d<f32>;    // this level, previous iteration
 @group(0) @binding(3) var coarse: texture_2d<f32>;  // one level coarser
-@group(0) @binding(4) var dst: texture_storage_2d<rg32float, write>;
+@group(0) @binding(4) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(5) var<uniform> P: Params;
 @group(0) @binding(6) var lsmp: sampler;
 
