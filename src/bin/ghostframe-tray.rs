@@ -146,28 +146,12 @@ mod app {
         }
     }
 
-    /// The logo mark (a grid of bits whose corner decays) as a 32x32 icon.
+    /// The logo mark: a ghost with its in-between frame trailing behind it
+    /// (assets/tray-icon.png, generated with the other logo files).
     fn icon() -> Icon {
-        let (n, s) = (32usize, 32.0 / 48.0);
-        let mut px = vec![0u8; n * n * 4];
-        let mut rect = |x: f32, y: f32, w: f32, h: f32, c: [u8; 3]| {
-            let (x0, y0, x1, y1) = ((x * s).round() as usize, (y * s).round() as usize, ((x + w) * s).round() as usize, ((y + h) * s).round() as usize);
-            for yy in y0..y1.max(y0 + 1).min(n) {
-                for xx in x0..x1.max(x0 + 1).min(n) {
-                    let i = (yy * n + xx) * 4;
-                    px[i..i + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
-                }
-            }
-        };
-        let ink = [242, 242, 240];
-        let ice = [142, 197, 255];
-        for &(x, y, w) in &[(3.0, 6.0, 10.0), (16.0, 6.0, 10.0), (29.0, 6.0, 10.0), (3.0, 19.0, 10.0), (16.0, 19.0, 10.0), (29.0, 23.0, 6.0), (3.0, 32.0, 10.0), (16.0, 35.0, 7.0)] {
-            rect(x, y, w, w, ink);
-        }
-        for &(x, y, w) in &[(30.0, 37.0, 4.0), (38.0, 30.0, 3.0), (43.0, 38.0, 2.0)] {
-            rect(x, y, w, w, ice);
-        }
-        Icon::from_rgba(px, n as u32, n as u32).expect("valid icon")
+        let png = image::load_from_memory(include_bytes!("../../assets/tray-icon.png")).expect("valid icon").into_rgba8();
+        let (w, h) = png.dimensions();
+        Icon::from_rgba(png.into_raw(), w, h).expect("valid icon")
     }
 
     struct Tray {

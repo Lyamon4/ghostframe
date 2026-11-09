@@ -17,6 +17,9 @@ pollster = "1"
 wgpu = "30"
 winit = "0.30"
 
+[build-dependencies]
+embed-resource = "3"
+
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.26"
 sys-locale = "0.3"

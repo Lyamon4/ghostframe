@@ -1,4 +1,9 @@
-# ghostframe
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" alt="ghostframe" width="380">
+  </picture>
+</h1>
 
 **Open-source frame generation. No paid DLLs, no vendor lock-in.**
 
@@ -132,6 +137,7 @@ src/
   install.rs  layer registration (Windows registry / Linux implicit_layer.d), tray autostart
   bin/ghostframe-tray.rs  notification-area app: running games, per-game switch
   testgame.rs a Vulkan test game + dump verification
+scripts/logo.py  the logo, tray and .exe icons, generated from one geometry
 layer/
   src/lib.rs  Vulkan layer: loader interface, dispatch chain, swapchain and present hooks
   src/fg.rs   the engine on raw Vulkan (ash): images, descriptors, pipelines, per-present commands
